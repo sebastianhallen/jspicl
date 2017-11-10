@@ -8,16 +8,16 @@ export const mappers = Object.assign({},
   statementMapper
 );
 
-export const generalPolyfills = {
-  "Math.max": values => `max(${values})`,
-  "Math.floor": value => `flr(${value})`,
-  "Object.assign": values => `merge({${values}})`,
-  "Object.keys": values => `kvpMap(${values}, function(key, value) return key end)`,
-  "Object.values": values => `kvpMap(${values}, function(key, value) return value end)`,
-  "Object.entries": values => `kvpMap(${values}, function(key, value) return {key, value} end)`,
-  "Math.random": () => "rnd(1)",
-  "console.log": argument => `print(${argument})`
-};
+export const generalPolyfills = Object.assign({},
+  wrapper("Math.max", values => `max(${values})`),
+  wrapper("Math.floor", value => `flr(${value})`),
+  wrapper("Math.random", () => "rnd(1)"),
+  objectAssign(),
+  wrapper("Object.keys", kvpMap("function(key, value) return key end")),
+  wrapper("Object.values", kvpMap("function(key, value) return value end")),
+  wrapper("Object.entities", kvpMap("function(key, value) return {key, value} end")),
+  wrapper("console.log", argument => `print(${argument})`),
+);
 
 export const arrayPolyfills = {
   forEach: (context, args) => `foreach(${context}, ${args})`,
@@ -28,26 +28,44 @@ export const arrayPolyfills = {
   filter: (context, args) => `_filter(${context}, ${args})`
 };
 
+function kvpMap (mapper) {
+  return values => `
+    local mappedValues = {}
+    for key, value in pairs(${values}) do
+      add(mappedValues, (${mapper})(key, value))
+    end
+
+    return mappedValues`;
+}
+
+function objectAssign () {
+  return wrapper("Object.assign", values => `
+    local sources = {${values}}
+    local target = sources[1]
+    del(sources, target)
+    for source in all(sources) do
+      for key, value in pairs(source) do
+        target[key] = value
+      end
+    end
+
+    return target
+  `);
+}
+
+function wrapper (method, func) {
+  const replacement = {};
+  replacement[method] = args => `___polyfill(function()
+  ${func(args)}
+end
+)`;
+  return replacement;
+}
+
 // TODO: The polyfills should have a prefix to avoid name clashing
 export const polyfills = `
-function kvpMap(source, mapper)
-  local mappedValues = {}
-  for key, value in pairs(source) do
-    add(mappedValues, mapper(key, value))
-  end
-
-  return mappedValues
-end
-function merge(sources)
-  local target = sources[1]
-  del(sources, target)
-  for source in all(sources) do
-    for key, value in pairs(source) do
-      target[key] = value
-    end
-  end
-
-  return target
+function ___polyfill(func, args)
+  return func(args)
 end
 function join(table, separator)
   local result = ""
